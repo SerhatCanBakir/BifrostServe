@@ -7,26 +7,47 @@
 #define MAX_CLINETS 20
 #define MAX_BUFF 2048
 
+// bu fonksiyon appi başlangıç duruma getirir ve gerekli bellek alanlarını ayırır
 int appInit(APP *app)
 {
     app->resSize = 0;
     app->reqSize = 0;
 
-    // req içindeki pointer'lara bellek ayır
     for (int i = 0; i < 50; i++)
     {
-        app->req[i].method = (char *)malloc(16);   // "GET", "POST" vb. için yeterli
-        app->req[i].url = (char *)malloc(256);     // URL için yeterli
-        app->req[i].headers = (char *)malloc(512); // Maksimum header boyutu
-        app->req[i].body = (char *)malloc(2048);   // Gövde boyutu
+        app->req[i].method = (char *)malloc(16);
+        app->req[i].url = (char *)malloc(256);
+        app->req[i].headers = (char *)malloc(512);
+        app->req[i].body = (char *)malloc(2048);
 
-        app->res[i].contentType = (char *)malloc(64); // MIME türü için yeterli
-        app->res[i].body = (char *)malloc(2048);      // Yanıt içeriği
+        app->res[i].contentType = (char *)malloc(64);
+        app->res[i].body = (char *)malloc(2048);
     }
 
     return 0;
 }
 
+// bu fonksiyon bellekte yaratılan bütün adresleri serbest bırakır
+void appDestroy(APP *app)
+{
+    for (int i = 0; i < app->reqSize; i++)
+    {
+        free(app->req[i].method);
+        free(app->req[i].url);
+        free(app->req[i].headers);
+        free(app->req[i].body);
+    }
+
+    for (int i = 0; i < app->resSize; i++)
+    {
+        free(app->res[i].contentType);
+        free(app->res[i].body);
+    }
+
+    printf("Bellek başarıyla temizlendi.\n");
+}
+
+// bu fonksiyon app structına gelen istek ve karşılığında gönderilicek sonucu ekler
 int appendrequest(APP *app, struct request req, struct response res)
 {
     if (app->reqSize >= 50 || app->resSize >= 50)
@@ -34,7 +55,6 @@ int appendrequest(APP *app, struct request req, struct response res)
         return -1;
     }
 
-    // Yeni istek için bellek tahsisi yap
     app->req[app->reqSize].method = strdup(req.method);
     app->req[app->reqSize].url = strdup(req.url);
     app->req[app->reqSize].headers = strdup(req.headers);
@@ -50,7 +70,7 @@ int appendrequest(APP *app, struct request req, struct response res)
 
     return 0;
 }
-
+// bu fonksiyon gelen isteği appteki isteklerle karşılaştırarak aynıysa response cevapı yazar
 int checkReq(APP *app, char *comingRequest, char **returnResp)
 {
     char method[16];
@@ -69,45 +89,50 @@ int checkReq(APP *app, char *comingRequest, char **returnResp)
     return -1;
 }
 
-
-struct request* createRequest(char* method,char*url,char* header,char* body){
-    struct request* req =(struct request*)malloc(sizeof(struct request));
-    req->method = (char *)malloc(16);  
-    req->url = (char *)malloc(256);    
+// bu fonksiyon malloc kullanarak request structını yaratmaya yarar
+struct request *createRequest(char *method, char *url, char *header, char *body)
+{
+    struct request *req = (struct request *)malloc(sizeof(struct request));
+    req->method = (char *)malloc(16);
+    req->url = (char *)malloc(256);
     req->headers = (char *)malloc(512);
     req->body = (char *)malloc(2048);
 
-    if (!req->method || !req->url || !req->headers || !req->body) {
+    if (!req->method || !req->url || !req->headers || !req->body)
+    {
         printf("HATA: Bellek tahsis edilemedi!\n");
         return NULL;
     }
 
-    strcpy(req->method,method);
-    strcpy(req->url,url);
-    strcpy(req->headers,header);
-    strcpy(req->body,body);
+    strcpy(req->method, method);
+    strcpy(req->url, url);
+    strcpy(req->headers, header);
+    strcpy(req->body, body);
     return req;
 }
 
-struct response* createResponse(int status,char* contentType,char* body){
-    struct response* res = (struct response*)malloc(sizeof(struct response));
-    res->status=(int)malloc(sizeof(int));
-    res->contentLenght=(int)malloc(sizeof(int));
-    res->contentType=(char*)malloc(512);
-    res->body=(char*)malloc(2048);
+// bı fonksiyon malloc kullanarak response structını yaratmaya yarar
+struct response *createResponse(int status, char *contentType, char *body)
+{
+    struct response *res = (struct response *)malloc(sizeof(struct response));
+    res->status = (int)malloc(sizeof(int));
+    res->contentLenght = (int)malloc(sizeof(int));
+    res->contentType = (char *)malloc(512);
+    res->body = (char *)malloc(2048);
 
-    if(!res->body||!res->status||!res->contentLenght||!res->contentType){
+    if (!res->body || !res->status || !res->contentLenght || !res->contentType)
+    {
         printf("HATA: Bellek yetersiz git ram al ");
         return NULL;
     }
-     res->status=status;
-     res->contentLenght=strlen(body);
-     strcpy(res->body,body);
-     strcpy(res->contentType,contentType);
-     return res;
+    res->status = status;
+    res->contentLenght = strlen(body);
+    strcpy(res->body, body);
+    strcpy(res->contentType, contentType);
+    return res;
 }
 
-
+// isteğin değerlerini birbirinden ayırmaya yarar
 int copyUntilSpace(const char *src, char *dest)
 {
     int i = 0;
@@ -119,7 +144,7 @@ int copyUntilSpace(const char *src, char *dest)
     dest[i] = '\0'; // Null terminator ekle
     return i;
 }
-
+// response structına göre cevap texti hazırlar
 void prepareResponse(struct response *src, char **dest)
 {
     *dest = (char *)malloc(512 + src->contentLenght); // Bellek ayır (eski 200 bayt yeterli değil!)
@@ -132,7 +157,7 @@ void prepareResponse(struct response *src, char **dest)
     sprintf(*dest, "HTTP/1.1 %d OK \r\nContent-Type: text/html \r\nContent-Length: %d \r\nConnection: close \r\n\r\n%s",
             src->status, src->contentLenght, src->body);
 }
-
+// dosya okumayı kolaylaştırır (html js css vb)
 char *readFile(const char *filename)
 {
     FILE *file = fopen(filename, "rb"); // Dosyayı okuma modunda aç (binary moduyla)
@@ -164,7 +189,8 @@ char *readFile(const char *filename)
     return buffer; // Pointer'ı döndür
 }
 
-int startServer(APP *app,char* ipAddr,int PORT)
+// serverı başlatır tcp socketi açarak girilen ip ve porta bağlar ve WSAPOLLDF ile istekler birbirini blocklamadan cevap yollar
+int startServer(APP *app, char *ipAddr, int PORT)
 {
     // Gerekli tanımlamaalr
     WSADATA WSAData;
@@ -211,7 +237,7 @@ int startServer(APP *app,char* ipAddr,int PORT)
         return 31;
     }
 
-    printf("server is listening at 3000\n");
+    printf("server is listening at %d\n", PORT);
 
     pollfds[0].fd = serverSocket;
     pollfds[0].events = POLLIN;
@@ -272,12 +298,11 @@ int startServer(APP *app,char* ipAddr,int PORT)
                 else
                 {
                     buff[bytesReceived] = '\0';
-                    printf("Gelen istek: %s\n", buff);
 
                     char *dest = NULL;
                     if (checkReq(app, buff, &dest) == 0 && dest != NULL)
                     {
-                        printf("Yanıt gönderiliyor:\n%s\n", dest);
+
                         send(pollfds[i].fd, dest, strlen(dest), 0);
                         free(dest);
                     }
