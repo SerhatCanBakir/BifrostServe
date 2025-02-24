@@ -10,6 +10,7 @@
 // bu fonksiyon appi başlangıç duruma getirir ve gerekli bellek alanlarını ayırır
 int appInit(APP *app)
 {
+    memset(app, 0, sizeof(app));
     app->resSize = 0;
     app->reqSize = 0;
 
@@ -64,7 +65,13 @@ int appendrequest(APP *app, struct request req, struct response res)
     app->res[app->resSize].body = strdup(res.body);
     app->res[app->resSize].status = res.status;
     app->res[app->resSize].contentLenght = res.contentLenght;
-
+    app->res[app->resSize].isStatic = res.isStatic;
+    if (!res.isStatic)
+    {
+        app->res[app->resSize].callbackfunc = res.callbackfunc;
+        app->res[app->resSize].callbackCount = res.callbackCount;
+        app->res[app->resSize].args = res.args;
+    }
     app->reqSize++;
     app->resSize++;
 
@@ -115,20 +122,62 @@ struct request *createRequest(char *method, char *url, char *header, char *body)
 struct response *createResponse(int status, char *contentType, char *body)
 {
     struct response *res = (struct response *)malloc(sizeof(struct response));
-    res->status = (int)malloc(sizeof(int));
-    res->contentLenght = (int)malloc(sizeof(int));
     res->contentType = (char *)malloc(512);
     res->body = (char *)malloc(2048);
+    res->callbackfunc = (void *)malloc(sizeof(void *));
+    res->args = (void **)malloc(sizeof(void **));
 
-    if (!res->body || !res->status || !res->contentLenght || !res->contentType)
+    if (!res->body || !res->contentType)
     {
         printf("HATA: Bellek yetersiz git ram al ");
         return NULL;
     }
+    res->isStatic = 1;
     res->status = status;
     res->contentLenght = strlen(body);
     strcpy(res->body, body);
     strcpy(res->contentType, contentType);
+
+    return res;
+}
+// dinamik şekilde cevabı değiştirmek için callback fonksiyonu ile bodydeki yazıyı her göndermeden önce ayarlıyoruz
+struct response *createResponseDynamic(int status, char *contentType, char *body, callBackFunc callbackfunc, int callbackCount, void **args)
+{
+    struct response *res = (struct response *)malloc(sizeof(struct response));
+    if (!res)
+    {
+        printf("HATA: Bellek yetersiz!\n");
+        return NULL;
+    }
+
+    res->contentType = (char *)malloc(512);
+    res->body = (char *)malloc(2048);
+
+    if (!res->body || !res->contentType)
+    {
+        printf("HATA: Bellek yetersiz!\n");
+        free(res);
+        return NULL;
+    }
+
+    res->isStatic = 0;
+    res->status = status;
+    res->contentLenght = (body) ? strlen(body) : 0;
+
+    if (body)
+        strcpy(res->body, body);
+    else
+        res->body[0] = '\0';
+
+    if (contentType)
+        strcpy(res->contentType, contentType);
+    else
+        res->contentType[0] = '\0';
+
+    res->callbackfunc = callbackfunc;
+    res->callbackCount = callbackCount;
+    res->args = args;
+
     return res;
 }
 
@@ -137,26 +186,55 @@ int copyUntilSpace(const char *src, char *dest)
 {
     int i = 0;
     while (src[i] != '\r' && src[i] != ' ')
-    { // Boşluk veya null karaktere kadar ilerle
+    {
         dest[i] = src[i];
         i++;
     }
-    dest[i] = '\0'; // Null terminator ekle
+    dest[i] = '\0';
     return i;
 }
 // response structına göre cevap texti hazırlar
 void prepareResponse(struct response *src, char **dest)
 {
-    *dest = (char *)malloc(512 + src->contentLenght); // Bellek ayır (eski 200 bayt yeterli değil!)
+
+    printf("PREPERE RES BODY %s ", src->body);
+    *dest = (char *)malloc(512 + src->contentLenght);
     if (*dest == NULL)
     {
         printf("Bellek tahsisi başarısız!\n");
         return;
     }
 
-    sprintf(*dest, "HTTP/1.1 %d OK \r\nContent-Type: text/html \r\nContent-Length: %d \r\nConnection: close \r\n\r\n%s",
+    if (src->isStatic == 0)
+    {
+
+        char *callbackAns = (char *)src->callbackfunc(src->callbackCount, src->args);
+
+        if (callbackAns == NULL)
+        {
+            printf("HATA: callbackfunc NULL döndürdü!\n");
+            return;
+        }
+
+        if (src->body == NULL)
+        {
+            src->body = (char *)malloc(256); // Bellek tahsis et (Örnek: 256 byte)
+            if (src->body == NULL)
+            {
+                printf("HATA: Bellek tahsis edilemedi!\n");
+                return;
+            }
+        }
+
+        snprintf(src->body, 256, "data :%s", callbackAns);
+        printf("%s", src->body);
+        free(callbackAns); // Bellek sızıntısını önlemek için serbest bırak
+    }
+
+    sprintf(*dest, "HTTP/1.1 %d OK \r\nContent-Type: text/html \r\nContent-Length: %d \r\nConnection: close  \r\n\r\n%s",
             src->status, src->contentLenght, src->body);
 }
+
 // dosya okumayı kolaylaştırır (html js css vb)
 char *readFile(const char *filename)
 {
@@ -167,12 +245,10 @@ char *readFile(const char *filename)
         return NULL;
     }
 
-    // Dosya boyutunu öğren
-    fseek(file, 0, SEEK_END);    // Dosya sonuna git
-    long fileSize = ftell(file); // Konumu al (dosyanın toplam uzunluğu)
-    rewind(file);                // Dosyanın başına dön
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    rewind(file);
 
-    // Bellek tahsis et (+1 çünkü string için sonuna '\0' ekleyeceğiz)
     char *buffer = (char *)malloc(fileSize + 1);
     if (!buffer)
     {
@@ -181,49 +257,47 @@ char *readFile(const char *filename)
         return NULL;
     }
 
-    // Dosyanın tamamını oku
     fread(buffer, 1, fileSize, file);
-    buffer[fileSize] = '\0'; // String'in sonuna '\0' koy
+    buffer[fileSize] = '\0';
 
-    fclose(file);  // Dosyayı kapat
-    return buffer; // Pointer'ı döndür
+    fclose(file);
+    return buffer;
 }
 
 // serverı başlatır tcp socketi açarak girilen ip ve porta bağlar ve WSAPOLLDF ile istekler birbirini blocklamadan cevap yollar
 int startServer(APP *app, char *ipAddr, int PORT)
 {
-    // Gerekli tanımlamaalr
     WSADATA WSAData;
     SOCKET serverSocket, clientSocket;
     char buff[2048];
     struct sockaddr_in serveraddr, clientaddr;
-    WSAPOLLFD pollfds[MAX_CLINETS];
+    WSAPOLLFD pollfds[MAX_CLINETS]; // Bağlı istemcileri tutan dizi
     int clientCount = 0;
     int clientSize = sizeof(clientaddr);
+
     if (WSAStartup(MAKEWORD(2, 2), &WSAData) == SOCKET_ERROR)
     {
-        printf("WSAStartup doesnt work!!!");
+        printf("WSAStartup başarısız!\n");
         return 31;
     }
 
-    // socket oluşturma
     serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (serverSocket == INVALID_SOCKET)
     {
-        printf("serverSocket coudnt create");
+        printf("Sunucu soketi oluşturulamadı!\n");
         WSACleanup();
         return 31;
     }
 
-    // server adresi ayarlama
     memset(&serveraddr, 0, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = inet_addr(ipAddr);
     serveraddr.sin_port = htons(PORT);
+    
 
     if (bind(serverSocket, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) == SOCKET_ERROR)
     {
-        printf("bind coudent work");
+        printf("bind başarısız!\n");
         closesocket(serverSocket);
         WSACleanup();
         return 31;
@@ -231,22 +305,25 @@ int startServer(APP *app, char *ipAddr, int PORT)
 
     if (listen(serverSocket, SOMAXCONN) == SOCKET_ERROR)
     {
-        printf("listen coudent work");
+        printf("listen başarısız!\n");
         closesocket(serverSocket);
         WSACleanup();
         return 31;
     }
 
-    printf("server is listening at %d\n", PORT);
+    printf("Sunucu %d portunda dinleniyor...\n", PORT);
 
     pollfds[0].fd = serverSocket;
     pollfds[0].events = POLLIN;
+
     while (1)
     {
-        int activity = WSAPoll(pollfds, (clientCount > 0) ? clientCount + 1 : 1, 5000);
+       // printf("Bağlı istemci sayısı: %d\n", clientCount);
+        int activity = WSAPoll(pollfds, clientCount + 1, 5000);
+
         if (activity < 0)
         {
-            printf("WSAPoll hatası! Hata kodu: %d\n", WSAGetLastError());
+            printf("WSAPoll başarısız! Hata kodu: %d\n", WSAGetLastError());
             break;
         }
 
@@ -256,55 +333,68 @@ int startServer(APP *app, char *ipAddr, int PORT)
             continue;
         }
 
+        // Yeni istemci bağlantısını kabul et
         if (pollfds[0].revents & POLLIN)
         {
             clientSocket = accept(serverSocket, (struct sockaddr *)&clientaddr, &clientSize);
             if (clientSocket == INVALID_SOCKET)
             {
-                printf("Accept başarısız! Hata kodu: %d\n", WSAGetLastError());
+                printf("accept başarısız! Hata kodu: %d\n", WSAGetLastError());
                 continue;
             }
 
             printf("Yeni istemci bağlandı: %s:%d\n", inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));
 
-            if (clientCount < MAX_CLINETS)
+            if (clientCount < MAX_CLINETS - 1)
             {
                 clientCount++;
                 pollfds[clientCount].fd = clientSocket;
                 pollfds[clientCount].events = POLLIN;
             }
+            else
+            {
+                printf("İstemci limiti aşıldı! Yeni bağlantılar kabul edilmiyor.\n");
+                closesocket(clientSocket);
+            }
         }
 
+        // Bağlı istemcilerden gelen veriyi oku
         for (int i = 1; i <= clientCount; i++)
         {
-            if (pollfds[i].revents & POLLIN)
-            {
-                memset(buff, 0, MAX_BUFF);
-                int bytesReceived = recv(pollfds[i].fd, buff, MAX_BUFF, 0);
 
+            if (pollfds[i].revents & POLLIN)
+            { 
+
+                memset(buff, 0, sizeof(buff));
+                int bytesReceived = recv(pollfds[i].fd, buff, sizeof(buff) - 1, 0);
+                
                 if (bytesReceived <= 0)
                 {
                     printf("İstemci bağlantısı kesildi.\n");
+
+                    // Önce bağlantıyı düzgünce kapat
+                    shutdown(pollfds[i].fd, SD_BOTH);
                     closesocket(pollfds[i].fd);
 
+                    // Listeyi düzenle
                     if (i != clientCount)
                     {
                         memmove(&pollfds[i], &pollfds[i + 1], (clientCount - i) * sizeof(WSAPOLLFD));
                     }
 
                     clientCount--;
+                    i--;
                     continue;
                 }
                 else
                 {
                     buff[bytesReceived] = '\0';
-
                     char *dest = NULL;
                     if (checkReq(app, buff, &dest) == 0 && dest != NULL)
                     {
-
                         send(pollfds[i].fd, dest, strlen(dest), 0);
                         free(dest);
+                      
                     }
                     else
                     {
@@ -314,4 +404,14 @@ int startServer(APP *app, char *ipAddr, int PORT)
             }
         }
     }
+
+    // Temizlik
+    for (int i = 1; i <= clientCount; i++)
+    {
+        closesocket(pollfds[i].fd);
+    }
+
+    closesocket(serverSocket);
+    WSACleanup();
+    return 0;
 }

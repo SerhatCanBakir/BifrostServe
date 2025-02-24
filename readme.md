@@ -8,6 +8,7 @@ Bu proje, temel bir HTTP sunucusunu C dili ile `Winsock2` kullanarak geliştirme
 - **Çoklu istemci desteği**: `WSAPoll()` kullanarak birden fazla istemciyle aynı anda iletişim kurma.
 - **Dosya okuma ve sunma**: HTML ve JavaScript dosyalarını sunarak temel bir web sunucusu işlevi.
 - **Modüler yapı**: `app.h` ve `app.c` dosyaları sayesinde kod organizasyonunun daha net olması.
+- **Dinamik yanıt desteği**: `createResponseDynamic` fonksiyonu sayesinde fonksiyon çıktıları yanıt olarak döndürülebilir.
 
 Bu süreç, **backend geliştirme** ve **düşük seviyeli programlama** alanlarında deneyim kazanmama yardımcı olmuştur.
 
@@ -64,27 +65,24 @@ appDestroy(&myApp);  // Sunucu kapatıldığında belleği temizle
 - **`int startServer(APP *app, char *ipAddr, int PORT)`**: Sunucuyu başlatır ve gelen istekleri dinler.
 - **`void appDestroy(APP *app)`**: Sunucu kapandığında tüm tahsis edilmiş belleği temizler.
 - **`struct request *createRequest(...)`** ve **`struct response *createResponse(...)`**: Dinamik bellek ile yeni bir istek ya da yanıt oluşturur.
+- **`struct response* createResponseDynamic(int status, char *contentType, char *body, callBackFunc callbackfunc, int callbackCount, void** args);`**: Dinamik içerik oluşturulmasını sağlar.
 - **`char* readFile(const char *filename)`**: Dosyayı okuyup bellek alanına aktarır.
 
-### **🔹 3. `appDestroy()` Fonksiyonu**
-Bellek sızıntılarını önlemek için eklenen `appDestroy()` fonksiyonu:
+### **🔹 3. `response` Yapısında Güncelleme**
+Yeni `struct response` yapısı:
 ```c
-void appDestroy(APP* app) {
-    for (int i = 0; i < app->reqSize; i++) {
-        free(app->req[i].method);
-        free(app->req[i].url);
-        free(app->req[i].headers);
-        free(app->req[i].body);
-    }
-
-    for (int i = 0; i < app->resSize; i++) {
-        free(app->res[i].contentType);
-        free(app->res[i].body);
-    }
-
-    printf("Bellek başarıyla temizlendi.\n");
-}
+struct response {
+    int isStatic;
+    int status;
+    char *contentType;
+    unsigned int contentLenght;
+    char *body;
+    callBackFunc callbackfunc;
+    int callbackCount;
+    void** args;
+};
 ```
+Bu yapı sayesinde artık response içine fonksiyon atayıp, her çağrıldığında callback şeklinde çalışmasını sağlayabiliyoruz.
 
 ---
 

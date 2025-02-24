@@ -2,9 +2,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
+
+
+void* addRand(int argSize,void** args);
+
 
 int main()
 {
+    srand(time(NULL));
     APP myApp;
     appInit(&myApp);
     printf("app init calisti\n");
@@ -29,17 +35,52 @@ int main()
         printf("HATA: Dosya okunamadı!\n");
         return 1;
     }
-    struct response res1= *createResponse(200," ",fileContent);
-
-    //app içine request ve responselar eklenir
+    struct response res1= *createResponse(200," ", fileContent);
+   //dinamic response yazılır
+   struct request req3 = *createRequest("GET","/randomnumber"," "," ");
+   int* a=malloc(sizeof(int));
+   int* b=malloc(sizeof(int));
+   *a =30;
+   *b = 31;
+   void* args[2]={a,b};
+   struct response res3 = *createResponseDynamic(200,"text/html"," data : %s",addRand,2,args);
+   // app içine request ve responselar eklenir
     appendrequest(&myApp, req, res);
     appendrequest(&myApp,req1,res1);
+    appendrequest(&myApp,req3,res3);
     printf("İstek sunucuya eklendi\n");
 
     //app dinlenmeye başlanır
     startServer(&myApp,"127.0.0.1",8080);
     printf("server durdu\n");
+    free(a);
+    free(b);
     //bellek sızıntısı olmasın diye bellek serbest bırakılır
     appDestroy(&myApp);
     return 0;
+}
+
+
+
+void* addRand(int argSize, void** args) {
+    if (argSize < 2 || !args[0] || !args[1]) {
+        printf("HATA: Geçersiz argümanlar\n");
+        return NULL;
+    }
+
+    int a = *(int*)args[0];
+    int b = *(int*)args[1];
+    int sum = a + b;
+
+    // Bellek tahsisi (32 bayt yeterli)
+    char* temp = malloc(32);
+    if (!temp) return NULL;
+
+    sprintf(temp, "%d", sum);
+
+    // **Rastgele sayı atama işlemi**
+    *(int*)args[0] = rand() % 100;  // 0-99 arasında rastgele sayı
+    *(int*)args[1] = rand() % 100;  // 0-99 arasında rastgele sayı
+
+    return (void*)temp;
 }
