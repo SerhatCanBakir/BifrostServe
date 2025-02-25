@@ -43,7 +43,7 @@ int main()
    *a =30;
    *b = 31;
    void* args[2]={a,b};
-   struct response res3 = *createResponseDynamic(200,"text/html"," data : %s",addRand,2,args);
+   struct response res3 = *createResponseDynamic(200,"text/html","\"randomNumber : %s\" ",addRand,2,args);
    // app içine request ve responselar eklenir
     appendrequest(&myApp, req, res);
     appendrequest(&myApp,req1,res1);

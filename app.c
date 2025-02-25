@@ -197,8 +197,8 @@ int copyUntilSpace(const char *src, char *dest)
 void prepareResponse(struct response *src, char **dest)
 {
 
-    printf("PREPERE RES BODY %s ", src->body);
     *dest = (char *)malloc(512 + src->contentLenght);
+    char* tempval = strdup(src->body);
     if (*dest == NULL)
     {
         printf("Bellek tahsisi başarısız!\n");
@@ -209,7 +209,8 @@ void prepareResponse(struct response *src, char **dest)
     {
 
         char *callbackAns = (char *)src->callbackfunc(src->callbackCount, src->args);
-
+        
+         
         if (callbackAns == NULL)
         {
             printf("HATA: callbackfunc NULL döndürdü!\n");
@@ -226,13 +227,12 @@ void prepareResponse(struct response *src, char **dest)
             }
         }
 
-        snprintf(src->body, 256, "data :%s", callbackAns);
-        printf("%s", src->body);
+        snprintf(tempval, 256, src->body, callbackAns);
         free(callbackAns); // Bellek sızıntısını önlemek için serbest bırak
     }
 
-    sprintf(*dest, "HTTP/1.1 %d OK \r\nContent-Type: text/html \r\nContent-Length: %d \r\nConnection: close  \r\n\r\n%s",
-            src->status, src->contentLenght, src->body);
+    sprintf(*dest, "HTTP/1.1 %d OK \r\nContent-Type: text/html \r\nContent-Length: %d \r\nConnection: close  \r\n\r\n%s ",
+            src->status, src->contentLenght, tempval);
 }
 
 // dosya okumayı kolaylaştırır (html js css vb)
@@ -318,7 +318,7 @@ int startServer(APP *app, char *ipAddr, int PORT)
 
     while (1)
     {
-       // printf("Bağlı istemci sayısı: %d\n", clientCount);
+    
         int activity = WSAPoll(pollfds, clientCount + 1, 5000);
 
         if (activity < 0)
@@ -332,6 +332,7 @@ int startServer(APP *app, char *ipAddr, int PORT)
             printf("WSAPoll zaman aşımı, tekrar bekleniyor...\n");
             continue;
         }
+
 
         // Yeni istemci bağlantısını kabul et
         if (pollfds[0].revents & POLLIN)
@@ -362,6 +363,7 @@ int startServer(APP *app, char *ipAddr, int PORT)
         for (int i = 1; i <= clientCount; i++)
         {
 
+            
             if (pollfds[i].revents & POLLIN)
             { 
 
@@ -394,7 +396,17 @@ int startServer(APP *app, char *ipAddr, int PORT)
                     {
                         send(pollfds[i].fd, dest, strlen(dest), 0);
                         free(dest);
-                      
+                        shutdown(pollfds[i].fd, SD_BOTH);
+                        closesocket(pollfds[i].fd);
+                    
+                        
+                        if (i < clientCount)
+                        {
+                            memmove(&pollfds[i], &pollfds[i + 1], (clientCount - i) * sizeof(WSAPOLLFD));
+                        }
+                    
+                        clientCount--;
+                        i--; 
                     }
                     else
                     {
