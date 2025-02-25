@@ -40,7 +40,8 @@ int checkReq(APP* app,char* comingRequest,char** returnResp);
 int appendrequest(APP* app,struct request req,struct response res);
 void appDestroy(APP* app);
 int startServer(APP *app,char* ipAddr,int PORT);
-struct request* createRequest(char* method,char*url,char* header,char* body);
+struct request* createRequest(char* method,char*url);
 struct response* createResponseDynamic(int status, char *contentType, char *body, callBackFunc callbackfunc,int callbackCount,void** args);
 struct response* createResponse(int status,char* contentType,char* body);
+char* getRequsetBody(char* text);
 #endif

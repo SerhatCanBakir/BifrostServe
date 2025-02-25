@@ -77,7 +77,7 @@ int appendrequest(APP *app, struct request req, struct response res)
 
     return 0;
 }
-// bu fonksiyon gelen isteği appteki isteklerle karşılaştırarak aynıysa response cevapı yazar
+// bu fonksiyon gelen isteği appteki isteklerle karşılaştırarak aynıysa response cevapı yazar eğer post isteği ise son bir parametre olarak bodyi ekler;
 int checkReq(APP *app, char *comingRequest, char **returnResp)
 {
     char method[16];
@@ -88,8 +88,15 @@ int checkReq(APP *app, char *comingRequest, char **returnResp)
     {
         if ((strcmp(app->req[i].method, method) == 0) && (strcmp(app->req[i].url, url) == 0))
         {
-            struct response res = app->res[i];
-            prepareResponse(&res, returnResp);
+            struct response *res = &app->res[i];
+            if (!strcmp(method, "POST"))
+            {
+                char *body = getRequsetBody(comingRequest);
+                if (!!body)
+                    res->args[res->callbackCount] = (void *)body;
+            }
+
+            prepareResponse(res, returnResp);
             return 0;
         }
     }
@@ -97,7 +104,7 @@ int checkReq(APP *app, char *comingRequest, char **returnResp)
 }
 
 // bu fonksiyon malloc kullanarak request structını yaratmaya yarar
-struct request *createRequest(char *method, char *url, char *header, char *body)
+struct request *createRequest(char *method, char *url)
 {
     struct request *req = (struct request *)malloc(sizeof(struct request));
     req->method = (char *)malloc(16);
@@ -113,8 +120,6 @@ struct request *createRequest(char *method, char *url, char *header, char *body)
 
     strcpy(req->method, method);
     strcpy(req->url, url);
-    strcpy(req->headers, header);
-    strcpy(req->body, body);
     return req;
 }
 
@@ -198,7 +203,7 @@ void prepareResponse(struct response *src, char **dest)
 {
 
     *dest = (char *)malloc(512 + src->contentLenght);
-    char* tempval = strdup(src->body);
+    char *tempval = strdup(src->body);
     if (*dest == NULL)
     {
         printf("Bellek tahsisi başarısız!\n");
@@ -209,8 +214,7 @@ void prepareResponse(struct response *src, char **dest)
     {
 
         char *callbackAns = (char *)src->callbackfunc(src->callbackCount, src->args);
-        
-         
+
         if (callbackAns == NULL)
         {
             printf("HATA: callbackfunc NULL döndürdü!\n");
@@ -264,6 +268,33 @@ char *readFile(const char *filename)
     return buffer;
 }
 
+// gelen isteğin bodysini alır;
+char *getRequsetBody(char *text)
+{
+    const char *ptr = text;
+    int count = 0;
+
+    while (*ptr)
+    {
+        if (strncmp(ptr, "\r\n", 2) == 0)
+        {
+            count++;
+            ptr += 2;
+            if (count == 2)
+            {
+                return strdup(ptr);
+            }
+        }
+        else
+        {
+            ptr++;
+            count = 0;
+        }
+    }
+
+    return NULL;
+}
+
 // serverı başlatır tcp socketi açarak girilen ip ve porta bağlar ve WSAPOLLDF ile istekler birbirini blocklamadan cevap yollar
 int startServer(APP *app, char *ipAddr, int PORT)
 {
@@ -293,7 +324,6 @@ int startServer(APP *app, char *ipAddr, int PORT)
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = inet_addr(ipAddr);
     serveraddr.sin_port = htons(PORT);
-    
 
     if (bind(serverSocket, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) == SOCKET_ERROR)
     {
@@ -318,7 +348,7 @@ int startServer(APP *app, char *ipAddr, int PORT)
 
     while (1)
     {
-    
+
         int activity = WSAPoll(pollfds, clientCount + 1, 5000);
 
         if (activity < 0)
@@ -332,7 +362,6 @@ int startServer(APP *app, char *ipAddr, int PORT)
             printf("WSAPoll zaman aşımı, tekrar bekleniyor...\n");
             continue;
         }
-
 
         // Yeni istemci bağlantısını kabul et
         if (pollfds[0].revents & POLLIN)
@@ -363,13 +392,12 @@ int startServer(APP *app, char *ipAddr, int PORT)
         for (int i = 1; i <= clientCount; i++)
         {
 
-            
             if (pollfds[i].revents & POLLIN)
-            { 
+            {
 
                 memset(buff, 0, sizeof(buff));
                 int bytesReceived = recv(pollfds[i].fd, buff, sizeof(buff) - 1, 0);
-                
+
                 if (bytesReceived <= 0)
                 {
                     printf("İstemci bağlantısı kesildi.\n");
@@ -398,15 +426,14 @@ int startServer(APP *app, char *ipAddr, int PORT)
                         free(dest);
                         shutdown(pollfds[i].fd, SD_BOTH);
                         closesocket(pollfds[i].fd);
-                    
-                        
+
                         if (i < clientCount)
                         {
                             memmove(&pollfds[i], &pollfds[i + 1], (clientCount - i) * sizeof(WSAPOLLFD));
                         }
-                    
+
                         clientCount--;
-                        i--; 
+                        i--;
                     }
                     else
                     {
