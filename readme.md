@@ -1,4 +1,4 @@
-# C HTTP Sunucusu
+# BifrostServe - C HTTP Sunucusu
 
 Bu proje, temel bir HTTP sunucusunu C dili ile `Winsock2` kullanarak geliştirmek amacıyla oluşturulmuştur. **Ana hedef**, soket programlama, bellek yönetimi ve çoklu istemci desteği alanlarında kendimi geliştirerek daha derin bir anlayış kazanmaktır.
 
@@ -101,7 +101,7 @@ curl http://127.0.0.1:8080/
 ## 🚀 **Geliştirme Planı**
 Bu proje, ağ programlama ve bellek yönetimi konularında kendimi geliştirmek için oluşturuldu. İleride eklemeyi düşündüğüm bazı özellikler:
 
-- [ ] POST isteklerini işleme
+- [X] POST isteklerini işleme
 - [ ] HTTP 1.1 Keep-Alive
 - [ ] Gelişmiş header yönetimi
 - [ ] Farklı MIME türlerini otomatik tespit etme
